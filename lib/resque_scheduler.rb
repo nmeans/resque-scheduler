@@ -160,7 +160,7 @@ module ResqueScheduler
 
   # Returns an array of timestamps based on start and count
   def delayed_queue_peek(start, count)
-    Array(redis.zrange(:delayed_queue_schedule, start, start+count)).collect{|x| x.to_i}
+    Array(redis.zrange(:delayed_queue_schedule, start, start+count-1)).collect{|x| x.to_i}
   end
 
   # Returns the size of the delayed queue schedule
@@ -258,12 +258,16 @@ module ResqueScheduler
 
     def clean_up_timestamp(key, timestamp)
       # If the list is empty, remove it.
+      redis.watch key
       if 0 == redis.llen(key).to_i
-        redis.del key
-        redis.zrem :delayed_queue_schedule, timestamp.to_i
+        redis.multi do
+          redis.del key
+          redis.zrem :delayed_queue_schedule, timestamp.to_i
+        end
+      else
+        redis.unwatch
       end
     end
-
     def validate_job!(klass)
       if klass.to_s.empty?
         raise Resque::NoClassError.new("Jobs must be given a class.")
